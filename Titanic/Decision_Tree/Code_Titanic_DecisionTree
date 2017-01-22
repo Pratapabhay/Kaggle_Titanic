@@ -1,0 +1,94 @@
+# *********************************************** Kaggle Competitions *******************************************************
+
+# Model Based On Decision Tree
+
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+
+# Import the training set: train
+train_url <- "http://s3.amazonaws.com/assets.datacamp.com/course/Kaggle/train.csv"
+
+train <- read.csv(train_url)
+# Import the testing set: test
+test_url <- "http://s3.amazonaws.com/assets.datacamp.com/course/Kaggle/test.csv"
+test <- read.csv(test_url)
+
+
+# Two-way comparison: row-wise proportions
+# prop.table(table(train$Sex, train$Survived), margin = 1)
+
+
+# Build the Basic decision tree based on the features given
+Tree_One <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked , data = train, method ="class")
+
+fancyRpartPlot(Tree_One)
+
+
+Tree_two <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+                     data = train, method = "class", control = rpart.control(minsplit = 50, cp = 0))
+
+fancyRpartPlot(Tree_two)
+
+
+# Create a copy of training data train_two. It's always good to modify a copy of traing data and keeping your original training data intact 
+train_two <- train
+
+full  <- bind_rows(train, test) # bind training & test data
+
+
+# Here We will do little bit feature Engineering on features which are quite obvious to exploit.
+
+# Extracting the Title from Name
+
+full$Title <- gsub('(.*, )|(\\..*)', '', full$Name)
+
+# Show title counts by sex
+table(full$Sex, full$Title)
+
+# Titles with very low cell counts to be combined to "rare" level
+rare_title <- c('Dona', 'Lady', 'the Countess','Capt', 'Col', 'Don', 
+'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer')
+
+# Also reassign mlle, ms, and mme accordingly
+full$Title[full$Title == 'Mlle']        <- 'Miss' 
+full$Title[full$Title == 'Ms']          <- 'Miss'
+full$Title[full$Title == 'Mme']         <- 'Mrs' 
+full$Title[full$Title %in% rare_title]  <- 'Rare Title'
+
+# Show title counts by sex again
+table(full$Sex, full$Title)
+
+# Added a column family size to find if there is any useful pattern
+
+# Finally, grab surname from passenger name
+full$Surname <- sapply(full$Name,  function(x) strsplit(x, split = '[,.]')[[1]][1])
+
+# Create a family size variable including the passenger themselves
+full$Fsize <- full$SibSp + full$Parch + 1
+
+# Create a family variable 
+full$Family <- paste(full$Surname, full$Fsize, sep='_')
+
+full$FsizeD[full$Fsize == 1] <- 'singleton'
+full$FsizeD[full$Fsize < 5 & full$Fsize > 1] <- 'small'
+full$FsizeD[full$Fsize > 4] <- 'large'
+
+train <- full[1:891,]
+test_new <- full[892:1309,]
+
+# Finish the command
+Tree_three <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title +  FsizeD, data = train, method = "class")
+
+# Visualize your new decision tree
+fancyRpartPlot(Tree_three)
+
+my_prediction <- predict(Tree_three, newdata = test_new, type = "class")
+
+# Finish the data.frame() call
+my_solution_Decision_Tree <- data.frame(PassengerId = test_new$PassengerId, Survived = my_prediction)
+
+
+# Finish the write.csv() call
+write.csv(my_solution_Decision_Tree, file = "my_solution_Decision_Tree.csv", row.names = FALSE)
